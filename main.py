@@ -2,17 +2,12 @@ import sys
 from PyQt4 import QtGui
 from random import randint
 
-
-
 class Piece(object):
-
     pieces = ("NE", "NS", "NW", "ES", "EW", "SW", "NSEW")
     def __init__(self):
         pass
-
     def get_random_piece(self):
         return self.pieces[randint(0,6)]
-
 
 class Board(object):
     #state[0] is row 1
@@ -25,6 +20,7 @@ class Board(object):
     realMaxRow = 6
     realMaxCol = 9
     state = [[x for x in range(0, pyRows)] for j in range(0, pyCols)]
+    start = []
     
     def __init__(self):
         pass
@@ -40,6 +36,10 @@ class Board(object):
         z = randint(0, 3)
         #self.state[0][1] = 'A'
         self.state[y-1][x-1] = self.int_to_direction(z)
+        self.start = [x-1, y-1, z]
+
+    def get_start_point(self):
+        return self.start
 
     def int_to_direction(self, number):
         direction = "Z"
@@ -66,73 +66,150 @@ class Board(object):
 class PipeView(QtGui.QWidget):
 
     layout = None
+    lbl_score = None
+    lbl_level = None
+    info_font = None
+    pyRows = 10
+    pyCols = 7
+    tiles = None
+
     def __init__(self):
         super(PipeView, self).__init__()
+        self.info_font = QtGui.QFont("Rockwell", 12, 12, False)
+        self.tiles = [[x for x in range(0, self.pyRows)] for j in range(0, self.pyCols)]
         self.init_ui()
-        self.draw_tiles()
+
 
     def init_ui(self):
         self.layout = QtGui.QGridLayout(self)
         self.layout.setSpacing(1)
         self.setLayout(self.layout)
         self.setGeometry(500, 300, 800, 600)
-        self.setWindowTitle('Icon')
-        self.setWindowIcon(QtGui.QIcon('intersection.jpg'))
-        lbl1 = QtGui.QLabel('a i d s', self)
-        lbl1.move(15, 10)
-        self.center()
+        self.setWindowTitle('Pipe Dream - by Henry Chladil')
+        self.setWindowIcon(QtGui.QIcon('assets/intersection.jpg'))
+        self.center_window()
+        self.draw_tiles()
+        self.draw_next_tiles()
+        self.draw_info()
         self.show()
 
-    def center(self):
-        qr = self.frameGeometry()
-        cp = QtGui.QDesktopWidget().availableGeometry().center()
-        qr.moveCenter(cp)
-        self.move(qr.topLeft())
+    def center_window(self):
+        frame_geo = self.frameGeometry()
+        center_point = QtGui.QDesktopWidget().availableGeometry().center()
+        frame_geo.moveCenter(center_point)
+        self.move(frame_geo.topLeft())
+
+    def draw_info(self):
+        self.lbl_score = QtGui.QLabel(self)
+        self.lbl_score.setText("Score: 0")
+        self.lbl_score.setScaledContents(True)
+        self.lbl_score.setFont(self.info_font)
+        self.layout.addWidget(self.lbl_score, 0, 0)
+
+        self.lbl_level = QtGui.QLabel(self)
+        self.lbl_level.setScaledContents(True)
+        self.lbl_level.setText("Level: 1")
+        self.layout.addWidget(self.lbl_level, 0, 1)
+        self.lbl_level.setFont(self.info_font)
+
+    def draw_next_tiles(self):
+        pixmap = QtGui.QPixmap('assets/intersection.jpg')
+        for column in range(5, 10):
+            label = QtGui.QLabel(self)
+            label.setPixmap(pixmap)
+            label.setScaledContents(True)
+            self.layout.addWidget(label, 0, column)
 
     def draw_tiles(self):
-        pixmap = QtGui.QPixmap('intersection.jpg')
-        for row in range(7):
-            for column in range(10):
+        pixmap = QtGui.QPixmap('assets/intersection.jpg')
+        for row in range(1, self.pyCols+1):
+            for column in range(self.pyRows):
                 label = QtGui.QLabel(self)
                 label.setPixmap(pixmap)
                 label.setScaledContents(True)
+                label.mousePressEvent = self.handle_click("ay")
                 self.layout.addWidget(label, row, column)
+                self.tiles[row-1][column-1] = label
+    def handle_click(self, event):
+        print "clicked" + event
+
+    def set_level(self, level):
+        self.lbl_level.setText("Level: " + str(level))
+        self.show()
+
+    def set_score(self, score):
+        self.lbl_score.setText("Score: " + str(score))
+        self.show()
 
 
-class PipeModel(PipeView):
+class PipeModel(object):
 
-    def __init__(self):
+    level = 0
+    score = 0
+    view = None
+
+    def __init__(self, view):
+        self.init_board()
+       
+        p = Piece()
+        self.view = view
+        self.level = 1
+
+    def init_board(self):
+        b = Board()
+        b.set_start_point()
+        start = b.get_start_point()
+
+        #b.update_board(0, 1, "A")
+        #b.print_board()
+
+    def set_level(self, level):
+        self.level = level
+        self.view.set_level(level)
+
+    def get_level(self):
+        return self.level
+
+    def set_score(self, score):
+        self.score = score
+        self.view.set_score(score)
+
+    def get_score(self):
+        return score
+
+
+class PipeController(object):
+
+    def __init__(self, model, view):
+        
         pass
-
-
-
-
-
-class PipeController(PipeModel, PipeView):
-
-    def __init__(self):
-        pass
-
-
-
 
 class PipeDream(object):
 
-    def __init__(self):
-        b = Board()
-        b.set_start_point()
-        b.update_board(0, 1, "A")
-        b.print_board()
-        p = Piece()
-        print p.get_random_piece()
+    running = False
+    model = None
+    view = None
+    controller = None
 
+    def __init__(self, model, view, controller):
+        self.running = True
+        self.run()
+        #print p.get_random_piece()
+        model.set_level(2)
+        model.set_score(10)
 
+    def run(self):
+        pass
+        #while self.running:
+            #self.update_game()
 
 
 def main():
     app = QtGui.QApplication(sys.argv)
     view = PipeView()
-    application = PipeDream()
+    model = PipeModel(view)
+    controller = PipeController(model, view)
+    application = PipeDream(model, view, controller)
     # w = QtGui.QWidget()
     #w.resize(800, 600)
     #w.move(100, 100)
