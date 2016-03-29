@@ -1,12 +1,24 @@
 import sys
-from PyQt4 import QtGui
+import PyQt4.QtGui as QtGui
+from PyQt4.QtCore import *
 from random import randint
+import eQLabel
+ROWS = 10
+COLS = 10
+
+class Tile(QtGui.QLabel):
+    pos = []
+    def set_pos(self, pos):
+        self.pos = pos
+    def mouseReleaseEvent(self, event):
+        print (self.pos)
 
 class Piece(object):
     pieces = ("NE", "NS", "NW", "ES", "EW", "SW", "NSEW")
     def __init__(self):
         pass
     def get_random_piece(self):
+        #TODO: weight items
         return self.pieces[randint(0,6)]
 
 class Board(object):
@@ -55,7 +67,7 @@ class Board(object):
 
     def print_board(self):
         for row in self.state:
-            print row
+            print (row)
 
     def update_board(self, x, y, piece):
         """
@@ -69,14 +81,12 @@ class PipeView(QtGui.QWidget):
     lbl_score = None
     lbl_level = None
     info_font = None
-    pyRows = 10
-    pyCols = 7
     tiles = None
 
     def __init__(self):
         super(PipeView, self).__init__()
-        self.info_font = QtGui.QFont("Rockwell", 12, 12, False)
-        self.tiles = [[x for x in range(0, self.pyRows)] for j in range(0, self.pyCols)]
+        self.info_font = QtGui.QFont("Georgia", 12, 12, False)
+        self.tiles = [[x for x in range(0, ROWS)] for j in range(0, COLS)]
         self.init_ui()
 
 
@@ -122,16 +132,39 @@ class PipeView(QtGui.QWidget):
 
     def draw_tiles(self):
         pixmap = QtGui.QPixmap('assets/intersection.jpg')
-        for row in range(1, self.pyCols+1):
-            for column in range(self.pyRows):
-                label = QtGui.QLabel(self)
-                label.setPixmap(pixmap)
+        for row in range(1, COLS+1):
+            for column in range(ROWS):
+                label = Tile(self)
+                label.set_pos([row - 1, column])
                 label.setScaledContents(True)
-                label.mousePressEvent = self.handle_click("ay")
+                label.setObjectName("Label%d:%d" % (row - 1, column))
+                #label.setText("%d:%d" % (row - 1, column))
+                label.setPixmap(pixmap)
+                #label.mousePressEvent(self.button_released)
+                #label.mousePressEvent = self.handle_click
                 self.layout.addWidget(label, row, column)
                 self.tiles[row-1][column-1] = label
     def handle_click(self, event):
-        print "clicked" + event
+        print (event.globalX())
+        print (event.globalY())
+        print (event.x())
+        print (event.y())
+        print (event.pos())
+        print (event.button())
+        #print (self.tiles)
+
+        for row in self.tiles:
+            print (row)
+        for row in self.tiles:
+            for col in row:
+                if col == event:
+                    print ("found :)")
+        #print (self.tiles[event])
+        print ("")
+
+    def button_released(self):
+        sending_button = self.sender()
+        self.status_label.setText('%s Clicked!' % str(sending_button.objectName()))
 
     def set_level(self, level):
         self.lbl_level.setText("Level: " + str(level))
@@ -199,9 +232,9 @@ class PipeDream(object):
         model.set_score(10)
 
     def run(self):
-        pass
         #while self.running:
-            #self.update_game()
+            #pass
+
 
 
 def main():
