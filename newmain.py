@@ -13,7 +13,6 @@ logger.setLevel(logging.INFO)
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 
-
 class TileImage(enum.Enum):
     INTERSECTION = "intersection.png"
     HORIZONTAL = "horizontal.png"
@@ -50,6 +49,20 @@ class TileImage(enum.Enum):
         ]
 
 
+class Direction(enum.Enum):
+    TOP = "top"
+    LEFT = 1
+    BOTTOM = 2
+    RIGHT = 3
+
+    def as_tile_image(self) -> TileImage:
+        return {
+            Direction.TOP: TileImage.VERTICAL,
+            Direction.LEFT: TileImage.HORIZONTAL,
+            Direction.BOTTOM: TileImage.VERTICAL,
+            Direction.RIGHT: TileImage.HORIZONTAL,
+        }[self]
+
 class constants:
     WIDTH, HEIGHT = 1280, 1000  # Window size
     GRID_COLS, GRID_ROWS = 10, 7
@@ -62,26 +75,47 @@ class constants:
 
     TILE_QUEUE_SIZE = 5
 
+@dataclasses.dataclass
+class FluidPosition:
+    x: int
+    y: int
+    z: Direction
 
 class GameState:
     tile_queue: deque[TileImage]
     _grid: list[list[TileImage | None]]
     clock_ticking: bool
     score: int
+    starting_fluid_position: Final[FluidPosition]
+    current_whole_second: int
 
     def __init__(self):
         self.running = True
-        self._grid = [[None for _ in range(constants.GRID_COLS)] for _ in range(constants.GRID_ROWS)]
+        self.start_tick = None
         self.tile_queue = deque(maxlen=5)
-
         for i in range(5):
             self.tile_queue.append(random.choice(TileImage.get_user_placeable_pieces()))
-        self.set_grid_at(
-            (random.randint(0, constants.GRID_COLS - 1), random.randint(0, constants.GRID_ROWS - 1)),
-            random.choice(TileImage.get_start_tiles())
-        )
+
+        self._grid = [[None for _ in range(constants.GRID_COLS)] for _ in range(constants.GRID_ROWS)]
+        x = int(random.randint(2, constants.GRID_COLS - 2))
+        y = int(random.randint(2, constants.GRID_ROWS - 2))
+        direction: Direction = random.choice(list(Direction))
+        self.set_grid_at((x, y), random.choice(TileImage.get_start_tiles()))
+        self._fluid_position = FluidPosition(x, y, direction)
+        self.starting_fluid_position = FluidPosition(x, y, direction)
         self.score = 0
         self.clock_ticking = False
+        self.current_whole_second = 0
+
+    def get_time(self) -> float:
+        if self.clock_ticking and self.start_tick is None:
+            self.start_tick = pg.time.get_ticks()
+        if not self.clock_ticking:
+            raise ValueError("Clock not ticking")
+        return (pg.time.get_ticks() - self.start_tick) / 1000
+
+    def pieces_placed(self) -> list[TileImage]:
+        return [tile for row in self._grid for tile in row if tile is not None]
 
     def grid_at(self, pos: tuple[int, int]) -> TileImage | None:
         return self._grid[constants.GRID_ROWS - 1 - pos[1]][pos[0]]
@@ -90,7 +124,7 @@ class GameState:
         try:
             self._grid[constants.GRID_ROWS - 1 - pos[1]][pos[0]] = tile
         except IndexError as e:
-            logger.error(f"Error setting grid at {pos}: {e} where constants.GRID_ROWS = {constants.GRID_ROWS} take away 1, take away {pos[1]} = {constants.GRID_ROWS - 1 - pos[1]}")
+            logger.error(f"Error setting grid at {pos}: {e}")
             raise
 
     def view_tile_queue(self):
@@ -101,13 +135,49 @@ class GameState:
         self.tile_queue.append(random.choice(TileImage.get_user_placeable_pieces()))
         return tile
 
+    def _get_next_fluid_position(self) -> FluidPosition:
+        if self.fluid_position is self.starting_fluid_position:
+            # Safe to just move, because we always spawn away from the edges.
+            match self.fluid_position.z:
+                case Direction.TOP:
+                    return FluidPosition(self.fluid_position.x, self.fluid_position.y - 1, Direction.TOP)
+                case Direction.LEFT:
+                    return FluidPosition(self.fluid_position.x - 1, self.fluid_position.y, Direction.LEFT)
+                case Direction.BOTTOM:
+                    return FluidPosition(self.fluid_position.x, self.fluid_position.y + 1, Direction.BOTTOM)
+                case Direction.RIGHT:
+                    return FluidPosition(self.fluid_position.x + 1, self.fluid_position.y, Direction.RIGHT)
+                case _:
+                    raise ValueError("Invalid direction")
+        else:
+            # TODO: Implement fluid flow - eventually trains moving.
+            return FluidPosition(self.fluid_position.x + 1, self.fluid_position.y, self.fluid_position.z)
+
+    def _move_fluid(self):
+        self.fluid_position = self._get_next_fluid_position()
+
+    def process_time(self):
+        if self.clock_ticking:
+            # try to print once a second
+            self.current_whole_second = round(self.get_time())
+            if self.current_whole_second > self.get_time():
+                logger.info(f"Time: {self.current_whole_second}")
+            if self.current_whole_second > 10:
+                self._move_fluid()
+
 
 @dataclasses.dataclass
 class Game:
     screen: pg.Surface
     state: GameState
 
-# Function to draw a single tile
+
+def draw_image(game: Game, pos: tuple[int, int], tile: TileImage) -> None:
+    img = pg.image.load("assets/" + tile.value).convert_alpha()
+    img = pg.transform.scale(img, (constants.TILE_SIZE, constants.TILE_SIZE))
+    game.screen.blit(img, get_x_y_from_grid_pos(pos))
+
+
 def draw_bg_tile(surface: pg.Surface, pos: tuple[int, int], size: int) -> None:
     """
     Draw a single tile on the grid
@@ -121,7 +191,6 @@ def draw_bg_tile(surface: pg.Surface, pos: tuple[int, int], size: int) -> None:
     font = pg.font.Font(None, 36)
     text = font.render(f"{pos[0]}, {pos[1]}", True, (255, 255, 255))
     surface.blit(text, (x + constants.TILE_SIZE / 2, y + constants.TILE_SIZE / 2))
-
 
 
 def get_click_pos_on_grid() -> tuple[int, int]:
@@ -149,25 +218,19 @@ def draw_grid(game: Game) -> None:
             if game.state.grid_at(pos) is None:
                  draw_bg_tile(game.screen, pos, constants.TILE_SIZE)
             else:
-                img = pg.image.load("assets/" + (game.state.grid_at(pos).value or 'intersection.png')).convert_alpha()
-                img = pg.transform.scale(img, (constants.TILE_SIZE, constants.TILE_SIZE))
-                game.screen.blit(img, get_x_y_from_grid_pos(pos))
+                draw_image(game, pos, game.state.grid_at(pos))
 
 def draw_tile_queue(game: Game) -> None:
     for i in range(constants.TILE_QUEUE_SIZE):
-        x = i * constants.TILE_SIZE
-        y = 0
         img = pg.image.load("assets/" + game.state.view_tile_queue()[i].value).convert_alpha()
         img = pg.transform.scale(img, (constants.TILE_SIZE - 10, constants.TILE_SIZE - 10))
-        game.screen.blit(img, (x, y))
+        game.screen.blit(img, (i * constants.TILE_SIZE, 0))
 
 def put_tile_at_pos(game: Game, pos: tuple[int, int]) -> None:
     if game.state.grid_at(pos) is None:
         tile = game.state.pop_deque_and_replenish_tile()
         game.state.set_grid_at(pos, tile)
-        img = pg.image.load("assets/" + tile.value).convert_alpha()
-        img = pg.transform.scale(img, (constants.TILE_SIZE, constants.TILE_SIZE))
-        game.screen.blit(img, get_x_y_from_grid_pos(pos))
+        draw_image(game, pos, game.state.grid_at(pos))
     else:
         logger.error("TODO: handle putting tile on top of another tile")
 
@@ -177,14 +240,14 @@ def main():
     screen: pg.Surface = pg.display.set_mode((constants.WIDTH, constants.HEIGHT))
     pg.display.set_caption("Pipe Dream")
     clock: pg.time.Clock = pg.time.Clock()
-    # Main loop
     state = GameState()
-
     game = Game(screen, state)
-    while state.running:
+
+    while game.state.running:
         draw_grid(game)
         draw_tile_queue(game)
 
+        game.state.process_time()
         event: pg.event.Event
         for event in pg.event.get():
             match event.type:
@@ -192,9 +255,10 @@ def main():
                     if event.button == 1:
                         put_tile_at_pos(game, get_click_pos_on_grid())
                 case pg.MOUSEBUTTONUP:
-                    pass
+                    # Once they place their first tile, the clock starts.
+                    game.state.clock_ticking = True
                 case pg.QUIT:
-                    state.running = False
+                    game.state.running = False
 
         pg.display.flip()
         clock.tick(60)
