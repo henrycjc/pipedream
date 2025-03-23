@@ -23,6 +23,32 @@ class TileImage(enum.Enum):
     BOTTOM_LEFT = "bottomleft.png"
     BOTTOM_RIGHT = "bottomright.png"
 
+    START_TOP = "start_top.png"
+    START_RIGHT = "start_right.png"
+    START_BOTTOM = "start_bottom.png"
+    START_LEFT = "start_left.png"
+
+    @staticmethod
+    def get_start_tiles() -> list["TileImage"]:
+        return [
+            TileImage.START_TOP,
+            TileImage.START_RIGHT,
+            TileImage.START_BOTTOM,
+            TileImage.START_LEFT,
+        ]
+
+    @staticmethod
+    def get_user_placeable_pieces() -> list["TileImage"]:
+        return [
+            TileImage.INTERSECTION,
+            TileImage.HORIZONTAL,
+            TileImage.VERTICAL,
+            TileImage.TOP_LEFT,
+            TileImage.TOP_RIGHT,
+            TileImage.BOTTOM_LEFT,
+            TileImage.BOTTOM_RIGHT
+        ]
+
 
 class constants:
     WIDTH, HEIGHT = 1280, 1000  # Window size
@@ -34,15 +60,28 @@ class constants:
     GRID_COLOR = (200, 200, 200)  # Light gray for tiles
     OUTLINE_COLOR = (100, 100, 100)  # Darker outline
 
+    TILE_QUEUE_SIZE = 5
+
 
 class GameState:
     tile_queue: deque[TileImage]
     _grid: list[list[TileImage | None]]
+    clock_ticking: bool
+    score: int
 
     def __init__(self):
+        self.running = True
         self._grid = [[None for _ in range(constants.GRID_COLS)] for _ in range(constants.GRID_ROWS)]
-        self.init_queue()
+        self.tile_queue = deque(maxlen=5)
+
+        for i in range(5):
+            self.tile_queue.append(random.choice(TileImage.get_user_placeable_pieces()))
+        self.set_grid_at(
+            (random.randint(0, constants.GRID_COLS - 1), random.randint(0, constants.GRID_ROWS - 1)),
+            random.choice(TileImage.get_start_tiles())
+        )
         self.score = 0
+        self.clock_ticking = False
 
     def grid_at(self, pos: tuple[int, int]) -> TileImage | None:
         return self._grid[constants.GRID_ROWS - 1 - pos[1]][pos[0]]
@@ -54,17 +93,12 @@ class GameState:
             logger.error(f"Error setting grid at {pos}: {e} where constants.GRID_ROWS = {constants.GRID_ROWS} take away 1, take away {pos[1]} = {constants.GRID_ROWS - 1 - pos[1]}")
             raise
 
-    def init_queue(self):
-        self.tile_queue = deque(maxlen=5)
-        for i in range(5):
-            self.tile_queue.append(random.choice(list(TileImage)))
-
-    def get_tile_deque(self):
+    def view_tile_queue(self):
         return self.tile_queue
 
     def pop_deque_and_replenish_tile(self):
         tile = self.tile_queue.popleft()
-        self.tile_queue.append(random.choice(list(TileImage)))
+        self.tile_queue.append(random.choice(TileImage.get_user_placeable_pieces()))
         return tile
 
 
@@ -96,7 +130,6 @@ def get_click_pos_on_grid() -> tuple[int, int]:
     """
     mouse_pos: tuple[int, int] = pg.mouse.get_pos()
     mouse_tile_x, mouse_tile_y = mouse_pos
-    (67, 939)
     grid_x = min(max(mouse_tile_x // constants.TILE_SIZE, 0), constants.GRID_COLS - 1)
     grid_y = min(max(constants.GRID_ROWS - (mouse_tile_y // constants.TILE_SIZE), 0), constants.GRID_ROWS - 1)
     logger.info(f"clicked {grid_x} {grid_y} from {mouse_pos}")
@@ -121,26 +154,22 @@ def draw_grid(game: Game) -> None:
                 game.screen.blit(img, get_x_y_from_grid_pos(pos))
 
 def draw_tile_queue(game: Game) -> None:
-    tiles = 5
-    for i in range(tiles):
+    for i in range(constants.TILE_QUEUE_SIZE):
         x = i * constants.TILE_SIZE
         y = 0
-        img = pg.image.load("assets/" + game.state.get_tile_deque()[i].value).convert_alpha()
+        img = pg.image.load("assets/" + game.state.view_tile_queue()[i].value).convert_alpha()
         img = pg.transform.scale(img, (constants.TILE_SIZE - 10, constants.TILE_SIZE - 10))
         game.screen.blit(img, (x, y))
 
 def put_tile_at_pos(game: Game, pos: tuple[int, int]) -> None:
-    tile = game.state.pop_deque_and_replenish_tile()
-    game.state.set_grid_at(pos, tile)
-    img = pg.image.load("assets/" + tile.value).convert_alpha()
-    img = pg.transform.scale(img, (constants.TILE_SIZE, constants.TILE_SIZE))
-    game.screen.blit(img, get_x_y_from_grid_pos(pos))
-
-
-def process_left_click(game: Game) -> None:
-    # If pos is in the menu, print the menu position, if its on the grid, print the grid position
-    x, y = get_click_pos_on_grid()
-    put_tile_at_pos(game, (x, y))
+    if game.state.grid_at(pos) is None:
+        tile = game.state.pop_deque_and_replenish_tile()
+        game.state.set_grid_at(pos, tile)
+        img = pg.image.load("assets/" + tile.value).convert_alpha()
+        img = pg.transform.scale(img, (constants.TILE_SIZE, constants.TILE_SIZE))
+        game.screen.blit(img, get_x_y_from_grid_pos(pos))
+    else:
+        logger.error("TODO: handle putting tile on top of another tile")
 
 
 def main():
@@ -149,28 +178,23 @@ def main():
     pg.display.set_caption("Pipe Dream")
     clock: pg.time.Clock = pg.time.Clock()
     # Main loop
-    running = True
     state = GameState()
 
     game = Game(screen, state)
-    while running:
+    while state.running:
         draw_grid(game)
         draw_tile_queue(game)
 
         event: pg.event.Event
         for event in pg.event.get():
-            # logger.info(f"Detected {event} at {get_click_pos_on_grid()}")
-
             match event.type:
                 case pg.MOUSEBUTTONDOWN:
                     if event.button == 1:
-                        process_left_click(game)
+                        put_tile_at_pos(game, get_click_pos_on_grid())
                 case pg.MOUSEBUTTONUP:
                     pass
                 case pg.QUIT:
-                    running = False
-            if event.type == pg.QUIT:
-                running = False
+                    state.running = False
 
         pg.display.flip()
         clock.tick(60)
