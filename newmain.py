@@ -93,15 +93,19 @@ class FluidState:
 
     def update(self, gamestate: "GameState") -> None:
         current_time = gamestate.get_time()
-        if current_time - self.last_move_time >= 3:  # Move every 3 seconds
+        if current_time - self.last_move_time >= 2:  # Move every 2 seconds
             direction_vectors: dict[Direction, pg.Vector2] = {
-                Direction.TOP: pg.math.Vector2(0, -1),
+                Direction.TOP: pg.math.Vector2(0, 1),
                 Direction.LEFT: pg.math.Vector2(-1, 0),
-                Direction.BOTTOM: pg.math.Vector2(0, 1),
+                Direction.BOTTOM: pg.math.Vector2(0, -1),
                 Direction.RIGHT: pg.math.Vector2(1, 0),
             }
             last_pos = self.path[-1]
             next_pos = last_pos + direction_vectors[self.start_direction]
+            # Check if the next position is valid
+            if next_pos.x < 0 or next_pos.x >= constants.GRID_COLS or next_pos.y < 0 or next_pos.y >= constants.GRID_ROWS:
+                logger.info(f"Fluid hit the wall at {next_pos}")
+                return
             self.path.append(next_pos)
             self.last_move_time = current_time
             logger.info(f"Fluid moved to {next_pos}")
@@ -251,7 +255,6 @@ def put_tile_at_pos(game: Game, grid_xy: tuple[int, int]) -> None:
 def draw_fluid(game: Game) -> None:
     # Draw a green bar that grows over time to show the fluid moving throughout the grid.
     # Start at the game.state.fluid_position
-    # If the fluid is at the edge of the grid, it should wrap around to the other side.
     if game.state.clock_ticking:
         # draw the fluid as a line that grows over time, accounting for turns and intersections
         for i in range(len(game.state.fluid_state.path) - 1):
