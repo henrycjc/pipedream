@@ -257,14 +257,8 @@ def draw_fluid(game: Game) -> None:
         for i in range(len(game.state.fluid_state.path) - 1):
             start_pos = game.state.fluid_state.path[i]
             end_pos = game.state.fluid_state.path[i + 1]
-            start_x, start_y = start_pos
-            end_x, end_y = end_pos
-            # start = get_draw_coords_from_grid_xy(start_pos)
-            # end = get_draw_coords_from_grid_xy(end_pos)
-            draw_start_x = (start_x % constants.GRID_COLS) * constants.TILE_SIZE
-            draw_start_y = ((start_y % constants.GRID_ROWS) * constants.TILE_SIZE) + constants.MENU_HEIGHT
-            draw_end_x = (end_x % constants.GRID_COLS) * constants.TILE_SIZE
-            draw_end_y = ((end_y % constants.GRID_ROWS) * constants.TILE_SIZE) + constants.MENU_HEIGHT
+            draw_start_x, draw_start_y = get_draw_coords_from_grid_xy(start_pos)
+            draw_end_x, draw_end_y = get_draw_coords_from_grid_xy(end_pos)
 
             pg.draw.line(
                 game.screen,
