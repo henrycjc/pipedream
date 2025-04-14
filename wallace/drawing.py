@@ -5,6 +5,12 @@ from wallace.assets import TileImage
 import pygame as pg
 
 
+def vec3to2(vec: pg.math.Vector3) -> pg.math.Vector2:
+    """
+    Convert a Vector3 to a tuple of ints
+    """
+    return pg.math.Vector2(int(vec.x), int(vec.y))
+
 def get_draw_coords_from_grid_xy(grid_xy: tuple[int, int]) -> tuple[int, int]:
     return grid_xy[0] * constants.TILE_SIZE, (constants.GRID_ROWS - 1 - grid_xy[1]) * constants.TILE_SIZE + constants.MENU_HEIGHT
 
@@ -68,31 +74,28 @@ def _draw_fluid(game: Game) -> None:
     # Start at the game.state.fluid_position
     if game.state.clock_ticking:
         # draw the fluid as a line that grows over time, accounting for turns and intersections
-        for i in range(len(game.state.fluid_state.path) - 1):
-            start_pos = game.state.fluid_state.path[i]
-            end_pos = game.state.fluid_state.path[i + 1]
-            draw_start_x, draw_start_y = get_draw_coords_from_grid_xy(start_pos)
-            draw_end_x, draw_end_y = get_draw_coords_from_grid_xy(end_pos)
+        for path_vec, next_path_vec in game.state.fluid_state.get_path():
+            draw_start_x, draw_start_y = get_draw_coords_from_grid_xy(vec3to2(path_vec))
+            draw_end_x, draw_end_y = get_draw_coords_from_grid_xy(vec3to2(next_path_vec))
 
+            # Interpolate the endpoint based on the z value
+            interpolated_x = draw_start_x + (draw_end_x - draw_start_x) * next_path_vec.z
+            interpolated_y = draw_start_y + (draw_end_y - draw_start_y) * next_path_vec.z
+            # print(
+            #     f"Drawing line: Start=({draw_start_x}, {draw_start_y}), "
+            #     f"End=({interpolated_x}, {interpolated_y}), z={path_vec.z}"
+            # )
+
+            # Draw the animated line
             pg.draw.line(
                 game.screen,
                 constants.GREEN,
-                (draw_start_x, draw_start_y),
-                (draw_end_x, draw_end_y),
-                5
+                (draw_start_x + constants.TILE_SIZE // 2, draw_start_y + constants.TILE_SIZE // 2),
+                (interpolated_x + constants.TILE_SIZE // 2, interpolated_y + constants.TILE_SIZE // 2),
+                10
             )
             # draw text of the coords of the line for debugging
 
-            font = pg.font.Font(None, 36)
-            text = font.render(f"{start_pos} -> {end_pos}", True, (255, 0, 0))
-            game.screen.blit(
-                text,
-                (
-                    draw_start_x,
-                    draw_start_y,
-                )
-            )
-            # logger.info(f"Drawing fluid line from {start_pos} to {end_pos} at {draw_start_x, draw_start_y} to {draw_end_x, draw_end_y}")
 
 
 def _draw_next_button(game: Game) -> None:

@@ -33,6 +33,12 @@ class GameState:
         grid_x = int(random.randint(2, constants.GRID_COLS - 2))
         grid_y = int(random.randint(2, constants.GRID_ROWS - 2))
         direction = random.choice(list(Direction))
+        temp_hack = True
+        if temp_hack:
+            grid_x = 3
+            grid_y = 3
+            direction = Direction.RIGHT
+            self.tile_queue = deque([TileImage.TOP_LEFT, TileImage.VERTICAL, TileImage.BOTTOM_RIGHT, TileImage.HORIZONTAL, TileImage.VERTICAL], maxlen=5)
 
         self.set_grid_at((grid_x, grid_y), direction.as_tile_image())
         logger.info(f"Starting tile at {(grid_x, grid_y)} to {direction.as_tile_image()}")
